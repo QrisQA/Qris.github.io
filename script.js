@@ -45,3 +45,28 @@ document.querySelectorAll('.game-art img[data-place-id]').forEach(async (img) =>
     // Keep the existing artwork if Roblox's public thumbnail API is unavailable.
   }
 });
+
+
+// Reveal content gently as it enters the viewport.
+document.documentElement.classList.add('js-motion');
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const revealTargets = document.querySelectorAll('.section-head, .game-card, .more-note, .about-inner, .contact-inner, .copyright');
+if (!reduceMotion && 'IntersectionObserver' in window) {
+  revealTargets.forEach((element, index) => {
+    element.classList.add('reveal');
+    if (element.classList.contains('game-card')) {
+      element.style.transitionDelay = `${(index % 4) * 70}ms`;
+    }
+  });
+  const revealObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -28px 0px' });
+  revealTargets.forEach(element => revealObserver.observe(element));
+} else {
+  revealTargets.forEach(element => element.classList.add('is-visible'));
+}
