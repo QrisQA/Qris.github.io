@@ -1,40 +1,111 @@
 (function(){
-  // Games: only entries with a verified placeId are shown. See README / games.js.
+  var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   var grid=document.getElementById('game-grid');
-  var games=(window.GAMES||[]).filter(function(g){return g.placeId}).sort(function(a,b){return (a.order||999)-(b.order||999)});
-  games.forEach(function(g){
-    var li=document.createElement('li');
-    var a=document.createElement('a');
-    a.className='card';
-    a.href='https://www.roblox.com/games/'+encodeURIComponent(g.placeId);
-    a.target='_blank'; a.rel='noopener noreferrer';
-    a.setAttribute('aria-label',g.title+', '+g.role+' (opens on Roblox)');
-    var art=document.createElement('div'); art.className='card__art';
-    var fb=document.createElement('div'); fb.className='card__fallback'; fb.setAttribute('aria-hidden','true');
-    fb.textContent=g.title.replace(/[^A-Za-z0-9]/g,'').charAt(0).toUpperCase();
-    art.appendChild(fb);
-    var img=new Image(); img.alt=''; img.width=256; img.height=256; img.decoding='async'; img.loading='lazy';
-    img.onload=function(){art.appendChild(img)};   // only shown once it truly loads; otherwise fallback stays
-    img.src='assets/icons/'+g.slug+'.png';
-    var t=document.createElement('h3'); t.className='card__title'; t.textContent=g.title;
-    var r=document.createElement('p'); r.className='card__role'; r.textContent=g.role;
-    a.appendChild(art); a.appendChild(t); a.appendChild(r); li.appendChild(a); grid.appendChild(li);
-  });
+  var games=(window.GAMES||[]).slice();
+
+  function compact(n){
+    if(n>=1e9)return (n/1e9).toFixed(n>=1e10?1:2).replace(/\.?0+$/,'')+'B';
+    if(n>=1e6)return (n/1e6).toFixed(n>=1e8?0:1).replace(/\.0$/,'')+'M';
+    if(n>=1e3)return (n/1e3).toFixed(n>=1e5?0:1).replace(/\.0$/,'')+'K';
+    return String(Math.round(n));
+  }
+  function ago(iso){var m=Math.max(1,Math.round((Date.now()-new Date(iso))/6e4));
+    return m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'}
+
+  fetch('data/stats.json',{cache:'no-cache'}).then(function(r){return r.ok?r.json():null}).catch(function(){return null})
+  .then(function(stats){ render(stats&&stats.updated?stats:null) });
+
+  function render(stats){
+    var S=stats?stats.games:{};
+    games.sort(function(a,b){var x=S[a.placeId],y=S[b.placeId];
+      if(x&&y)return y.visits-x.visits; if(x)return -1; if(y)return 1; return 0});
+    document.getElementById('fact-count').textContent=games.length;
+    games.forEach(function(g,i){
+      var s=S[g.placeId];
+      var li=document.createElement('li'); li.className='reveal'; li.style.setProperty('--i',i%4); li.dataset.role=g.role;
+      var a=document.createElement('a'); a.className='card';
+      a.href='https://www.roblox.com/games/'+encodeURIComponent(g.placeId);
+      a.target='_blank'; a.rel='noopener noreferrer';
+      a.setAttribute('aria-label',g.title+', '+g.role+' (opens on Roblox)');
+      a.addEventListener('pointermove',function(e){var b=a.getBoundingClientRect();a.style.setProperty('--mx',(e.clientX-b.left)+'px');a.style.setProperty('--my',(e.clientY-b.top)+'px')});
+
+      var media=el('div','card__media');
+      var back=el('div','card__backdrop'); media.appendChild(back);
+      var icon=el('div','card__icon'); var fb=el('span','card__letter'); fb.textContent=g.title.replace(/[^A-Za-z0-9]/g,'').charAt(0).toUpperCase(); icon.appendChild(fb);
+      media.appendChild(icon);
+      load('assets/thumbs/'+g.slug+'.png',function(img){img.className='card__thumb';media.insertBefore(img,icon)});
+      load('assets/icons/'+g.slug+'.png',function(img){icon.appendChild(img);fb.remove();
+        back.style.backgroundImage='url("assets/icons/'+g.slug+'.png")'});
+
+      var body=el('div','card__body');
+      var t=el('h3','card__title'); t.textContent=g.title;
+      var r=el('p','card__role'); r.textContent=g.role;
+      body.appendChild(t); body.appendChild(r);
+      var foot=el('div','card__stats');
+      if(s){
+        foot.appendChild(stat('live','playing',s.playing,'playing'));
+        foot.appendChild(stat('','visits',s.visits,'visits'));
+      } else { foot.classList.add('is-empty') }
+      a.appendChild(media); a.appendChild(body); a.appendChild(foot); li.appendChild(a); grid.appendChild(li);
+    });
+    var note=document.getElementById('stats-note');
+    if(stats){note.textContent='Player counts and visits come from Roblox and refresh every few hours (last updated '+ago(stats.updated)+').'}
+    initReveal(); initFilters();
+  }
+  function el(t,c){var e=document.createElement(t);e.className=c;return e}
+  function load(src,ok){var i=new Image();i.alt='';i.decoding='async';i.onload=function(){ok(i);requestAnimationFrame(function(){i.classList.add('in')})};i.src=src}
+  function stat(cls,_k,val,label){
+    var d=el('span','stat '+cls); var n=el('b','stat__n'); n.dataset.val=val; n.textContent=compact(val);
+    var l=el('span','stat__l'); l.textContent=label; d.appendChild(n); d.appendChild(l); return d}
+
+  // Reveal on scroll + count-up
+  function initReveal(){
+    var items=document.querySelectorAll('.reveal');
+    if(reduce||!('IntersectionObserver' in window)){items.forEach(function(e){e.classList.add('in')});return}
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){
+      if(!e.isIntersecting)return; e.target.classList.add('in'); io.unobserve(e.target);
+      e.target.querySelectorAll('.stat__n').forEach(countUp)})},{threshold:.12,rootMargin:'0px 0px -40px 0px'});
+    items.forEach(function(e){io.observe(e)});
+  }
+  function countUp(n){var end=+n.dataset.val,t0=null,dur=1100;
+    function f(ts){t0=t0||ts;var p=Math.min(1,(ts-t0)/dur),e=1-Math.pow(1-p,3);n.textContent=compact(end*e);if(p<1)requestAnimationFrame(f);else n.textContent=compact(end)}
+    requestAnimationFrame(f)}
+
+  // Filters
+  function initFilters(){
+    var chips=document.querySelectorAll('.chip');
+    chips.forEach(function(c){c.addEventListener('click',function(){
+      chips.forEach(function(x){var on=x===c;x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on)});
+      var f=c.dataset.filter;
+      grid.querySelectorAll('li').forEach(function(li){li.hidden=!(f==='all'||li.dataset.role===f);if(!li.hidden)li.classList.add('in')});
+    })});
+  }
+
+  // Scroll progress, nav state, active link
+  var bar=document.getElementById('progress'),nav=document.getElementById('nav'),tick=false;
+  function onScroll(){tick=false;var h=document.documentElement,max=h.scrollHeight-h.clientHeight;
+    bar.style.transform='scaleX('+(max>0?h.scrollTop/max:0)+')';nav.classList.toggle('is-stuck',h.scrollTop>10)}
+  addEventListener('scroll',function(){if(!tick){tick=true;requestAnimationFrame(onScroll)}},{passive:true});onScroll();
+  if('IntersectionObserver' in window){
+    var links=document.querySelectorAll('.nav__menu a');
+    var so=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting)links.forEach(function(a){a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id)})})},{rootMargin:'-45% 0px -50% 0px'});
+    ['games','about','contact'].forEach(function(id){so.observe(document.getElementById(id))});
+  }
 
   // Mobile nav
-  var btn=document.querySelector('.nav__toggle'), menu=document.getElementById('menu');
-  function setMenu(open){btn.setAttribute('aria-expanded',open);menu.classList.toggle('open',open)}
+  var btn=document.querySelector('.nav__toggle'),menu=document.getElementById('menu');
+  function setMenu(o){btn.setAttribute('aria-expanded',o);menu.classList.toggle('open',o)}
   btn.addEventListener('click',function(){setMenu(btn.getAttribute('aria-expanded')!=='true')});
   menu.addEventListener('click',function(e){if(e.target.tagName==='A')setMenu(false)});
   document.addEventListener('keydown',function(e){if(e.key==='Escape')setMenu(false)});
 
   // Copy Discord username
-  var status=document.getElementById('copy-status'), name=document.getElementById('discord').textContent.trim();
-  document.getElementById('copy').addEventListener('click',function(){
-    function ok(){status.textContent='Copied “'+name+'” to clipboard.'}
+  var status=document.getElementById('copy-status'),name=document.getElementById('discord').textContent.trim(),cb=document.getElementById('copy');
+  cb.addEventListener('click',function(){
+    function ok(){status.textContent='Copied “'+name+'” to clipboard.';cb.textContent='Copied ✓';setTimeout(function(){cb.textContent='Copy username'},1800)}
     function fail(){status.textContent='Couldn’t copy automatically. My username is '+name+'.'}
     if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(name).then(ok,fail)}
-    else{try{var t=document.createElement('textarea');t.value=name;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();var s=document.execCommand('copy');document.body.removeChild(t);s?ok():fail()}catch(e){fail()}}
+    else{try{var t=document.createElement('textarea');t.value=name;t.style.cssText='position:fixed;opacity:0';document.body.appendChild(t);t.select();var s=document.execCommand('copy');document.body.removeChild(t);s?ok():fail()}catch(e){fail()}}
   });
   document.getElementById('year').textContent=new Date().getFullYear();
 })();

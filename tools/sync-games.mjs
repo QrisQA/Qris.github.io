@@ -1,25 +1,27 @@
-// Run locally: node tools/sync-games.mjs   (Node 18+, needs internet)
-// For every game with a placeId in games.js it: looks up the experience via Roblox's public APIs,
-// prints name + creator so YOU can confirm it is the right one, downloads the official square icon
-// to assets/icons/<slug>.png, and rewrites `order` by visits (visit counts are only printed here,
-// never written to the site). NOTE: written without network access, so it has not been run by the author.
+// Node 18+. Run by the GitHub Action (or locally: node tools/sync-games.mjs).
+// Reads games.js, asks Roblox's public APIs for visits / players / icon / thumbnail,
+// saves images to assets/, writes data/stats.json, and prints name + creator for verification.
 import fs from 'node:fs'; import path from 'node:path'; import {fileURLToPath} from 'node:url';
 const root=path.join(path.dirname(fileURLToPath(import.meta.url)),'..');
-const file=path.join(root,'games.js'); const src=fs.readFileSync(file,'utf8');
-const m=src.match(/\/\*DATA\*\/([\s\S]*?)\/\*END\*\//); const games=JSON.parse(m[1]);
-const j=async u=>{const r=await fetch(u); if(!r.ok) throw new Error(r.status+' '+u); return r.json()};
-fs.mkdirSync(path.join(root,'assets/icons'),{recursive:true});
-const rows=[];
-for(const g of games.filter(g=>g.placeId)){
-  try{
-    const {universeId}=await j(`https://apis.roblox.com/universes/v1/places/${g.placeId}/universe`);
-    const d=(await j(`https://games.roblox.com/v1/games?universeIds=${universeId}`)).data[0];
-    const t=(await j(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=256x256&format=Png&returnPolicy=PlaceHolder&isCircular=false`)).data[0];
-    if(t?.imageUrl&&t.state==='Completed'){const b=Buffer.from(await (await fetch(t.imageUrl)).arrayBuffer()); fs.writeFileSync(path.join(root,'assets/icons',g.slug+'.png'),b)}
-    rows.push({g,visits:d.visits}); console.log(`${g.title}  ->  "${d.name}" by ${d.creator.name}  [icon: ${t?.state}]`);
-  }catch(e){console.warn('FAILED',g.title,e.message)}
+const src=fs.readFileSync(path.join(root,'games.js'),'utf8');
+const games=JSON.parse(src.slice(src.indexOf('['),src.lastIndexOf(']')+1));
+const j=async u=>{const r=await fetch(u,{headers:{accept:'application/json'}}); if(!r.ok) throw new Error(r.status+' '+u); return r.json()};
+const save=async(url,file)=>{const r=await fetch(url); if(!r.ok) return false; fs.writeFileSync(path.join(root,file),Buffer.from(await r.arrayBuffer())); return true};
+fs.mkdirSync(path.join(root,'assets/icons'),{recursive:true}); fs.mkdirSync(path.join(root,'assets/thumbs'),{recursive:true}); fs.mkdirSync(path.join(root,'data'),{recursive:true});
+// place -> universe (batch endpoint)
+const uni={};
+for(const g of games){ try{ uni[g.placeId]=(await j(`https://apis.roblox.com/universes/v1/places/${g.placeId}/universe`)).universeId }catch(e){ console.warn('NO UNIVERSE',g.title,e.message) } }
+const ids=Object.values(uni).filter(Boolean).join(',');
+const info=Object.fromEntries((await j(`https://games.roblox.com/v1/games?universeIds=${ids}`)).data.map(d=>[d.id,d]));
+const icons=Object.fromEntries((await j(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${ids}&size=256x256&format=Png&returnPolicy=PlaceHolder&isCircular=false`)).data.map(d=>[d.targetId,d]));
+const thumbs=Object.fromEntries((await j(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${ids}&countPerUniverse=1&size=768x432&format=Png&isCircular=false`)).data.map(d=>[d.universeId,d.thumbnails?.[0]]));
+const out={updated:new Date().toISOString(),games:{}};
+for(const g of games){
+  const u=uni[g.placeId], d=info[u]; if(!d){console.warn('MISSING',g.title);continue}
+  out.games[g.placeId]={name:d.name,creator:d.creator?.name,visits:d.visits,playing:d.playing};
+  const i=icons[u]; if(i?.state==='Completed'&&i.imageUrl) await save(i.imageUrl,`assets/icons/${g.slug}.png`);
+  const t=thumbs[u]; if(t?.state==='Completed'&&t.imageUrl) await save(t.imageUrl,`assets/thumbs/${g.slug}.png`);
+  console.log(`${g.title.padEnd(32)} -> "${d.name}" by ${d.creator?.name}`);
 }
-rows.sort((a,b)=>b.visits-a.visits).forEach((r,i)=>r.g.order=i+1);
-console.log('\nOrder by visits (terminal only):'); rows.forEach(r=>console.log(r.g.order,r.g.title,r.visits.toLocaleString()));
-fs.writeFileSync(file,src.replace(m[0],'/*DATA*/ '+JSON.stringify(games,null,2)+' /*END*/'));
-console.log('\nUpdated games.js. Check each name/creator above matches the official game you tested.');
+fs.writeFileSync(path.join(root,'data/stats.json'),JSON.stringify(out,null,1));
+console.log('\nCheck each line above is the official game you tested.');
