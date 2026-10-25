@@ -1,72 +1,40 @@
-const menuButton = document.querySelector('.menu');
-const nav = document.querySelector('nav');
-if (menuButton && nav) {
-  menuButton.addEventListener('click', () => {
-    const open = nav.classList.toggle('open');
-    menuButton.setAttribute('aria-expanded', String(open));
+(function(){
+  // Games: only entries with a verified placeId are shown. See README / games.js.
+  var grid=document.getElementById('game-grid');
+  var games=(window.GAMES||[]).filter(function(g){return g.placeId}).sort(function(a,b){return (a.order||999)-(b.order||999)});
+  games.forEach(function(g){
+    var li=document.createElement('li');
+    var a=document.createElement('a');
+    a.className='card';
+    a.href='https://www.roblox.com/games/'+encodeURIComponent(g.placeId);
+    a.target='_blank'; a.rel='noopener noreferrer';
+    a.setAttribute('aria-label',g.title+', '+g.role+' (opens on Roblox)');
+    var art=document.createElement('div'); art.className='card__art';
+    var fb=document.createElement('div'); fb.className='card__fallback'; fb.setAttribute('aria-hidden','true');
+    fb.textContent=g.title.replace(/[^A-Za-z0-9]/g,'').charAt(0).toUpperCase();
+    art.appendChild(fb);
+    var img=new Image(); img.alt=''; img.width=256; img.height=256; img.decoding='async'; img.loading='lazy';
+    img.onload=function(){art.appendChild(img)};   // only shown once it truly loads; otherwise fallback stays
+    img.src='assets/icons/'+g.slug+'.png';
+    var t=document.createElement('h3'); t.className='card__title'; t.textContent=g.title;
+    var r=document.createElement('p'); r.className='card__role'; r.textContent=g.role;
+    a.appendChild(art); a.appendChild(t); a.appendChild(r); li.appendChild(a); grid.appendChild(li);
   });
-  nav.querySelectorAll('a').forEach(link => link.addEventListener('click', () => {
-    nav.classList.remove('open');
-    menuButton.setAttribute('aria-expanded', 'false');
-  }));
-}
-const copyButton = document.getElementById('copy-discord');
-const discordName = document.getElementById('discord-name');
-const copyStatus = document.getElementById('copy-status');
-if (copyButton && discordName && copyStatus) {
-  copyButton.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(discordName.textContent.trim());
-      copyStatus.textContent = 'Username copied. Find me on Discord.';
-      copyButton.innerHTML = 'Copied ✓';
-    } catch {
-      copyStatus.textContent = 'Your username is qris000 — you can copy it manually.';
-    }
+
+  // Mobile nav
+  var btn=document.querySelector('.nav__toggle'), menu=document.getElementById('menu');
+  function setMenu(open){btn.setAttribute('aria-expanded',open);menu.classList.toggle('open',open)}
+  btn.addEventListener('click',function(){setMenu(btn.getAttribute('aria-expanded')!=='true')});
+  menu.addEventListener('click',function(e){if(e.target.tagName==='A')setMenu(false)});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')setMenu(false)});
+
+  // Copy Discord username
+  var status=document.getElementById('copy-status'), name=document.getElementById('discord').textContent.trim();
+  document.getElementById('copy').addEventListener('click',function(){
+    function ok(){status.textContent='Copied “'+name+'” to clipboard.'}
+    function fail(){status.textContent='Couldn’t copy automatically. My username is '+name+'.'}
+    if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(name).then(ok,fail)}
+    else{try{var t=document.createElement('textarea');t.value=name;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();var s=document.execCommand('copy');document.body.removeChild(t);s?ok():fail()}catch(e){fail()}}
   });
-}
-const year = document.getElementById('year');
-if (year) year.textContent = new Date().getFullYear();
-
-// Load square official Roblox experience icons instead of wide gameplay thumbnails.
-document.querySelectorAll('.game-art img[data-place-id]').forEach(async (img) => {
-  img.addEventListener('error', () => { img.style.display = 'none'; });
-  const placeId = img.dataset.placeId;
-  try {
-    const universeResponse = await fetch(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
-    if (!universeResponse.ok) return;
-    const universe = await universeResponse.json();
-    if (!universe.universeId) return;
-    const iconResponse = await fetch(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universe.universeId}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false`);
-    if (!iconResponse.ok) return;
-    const icons = await iconResponse.json();
-    const iconUrl = icons.data && icons.data[0] && icons.data[0].imageUrl;
-    if (iconUrl) img.src = iconUrl;
-  } catch {
-    // Keep the existing artwork if Roblox's public thumbnail API is unavailable.
-  }
-});
-
-
-// Reveal content gently as it enters the viewport.
-document.documentElement.classList.add('js-motion');
-const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const revealTargets = document.querySelectorAll('.section-head, .game-card, .more-note, .about-inner, .contact-inner, .copyright');
-if (!reduceMotion && 'IntersectionObserver' in window) {
-  revealTargets.forEach((element, index) => {
-    element.classList.add('reveal');
-    if (element.classList.contains('game-card')) {
-      element.style.transitionDelay = `${(index % 4) * 70}ms`;
-    }
-  });
-  const revealObserver = new IntersectionObserver((entries, observer) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.12, rootMargin: '0px 0px -28px 0px' });
-  revealTargets.forEach(element => revealObserver.observe(element));
-} else {
-  revealTargets.forEach(element => element.classList.add('is-visible'));
-}
+  document.getElementById('year').textContent=new Date().getFullYear();
+})();
