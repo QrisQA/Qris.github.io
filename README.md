@@ -1,15 +1,11 @@
 # Qris — Roblox QA Tester Portfolio
-Static site, no dependencies, GitHub Pages ready.
+Static site, no dependencies, GitHub Pages ready. Put all files at the repo root.
 
-## Deploy
-1. Copy everything (including the hidden `.github` folder) to the root of your repo, commit, push.
-2. Repo → Settings → Pages → Deploy from a branch → `main` / `(root)`.
-3. Repo → Settings → Actions → General → Workflow permissions → **Read and write permissions** → Save.
-4. Repo → Actions tab → "Update game stats" → **Run workflow** (do this once now). It downloads the official icons and
-   thumbnails into `assets/`, writes `data/stats.json` (visits + players), and commits them. After that it re-runs every 3 hours.
-5. Open the run log and check each line shows the official game you tested.
+## Updating player counts / visits (every few days)
+Edit `data/stats.json` on GitHub (pencil icon): fill in `playing` and `visits` per game (e.g. "45K", "243.9M", "5.7B"),
+set `updated` to today's date, and commit. Leave a value blank to hide it. Cards re-sort by visits once every game has a visits value.
+(Or just send the numbers to Claude and get a ready file back.)
 
-## Edit
-- Games: `games.js` (placeId = number in the Roblox URL). Order is automatic, by visits.
-- Palette: `data-palette` on `<html>` in `index.html` (violet, blue, emerald, crimson, gold, ice, mono).
-- Until the first Action run, cards show a lettered tile and no numbers (nothing is faked).
+## Other edits
+- Games, roles, thumbnails: `games.js`. Palette: `data-palette` on `<html>` in `index.html`.
+- Thumbnails load from Roblox's CDN; if one ever breaks, the card shows a lettered tile instead.

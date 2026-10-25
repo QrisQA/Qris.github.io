@@ -1,1 +1,16 @@
-{"updated":null,"games":{}}
+{
+  "updated": "2026-10-25",
+  "games": {
+    "escape-tsunami-for-brainrots": { "playing": "", "visits": "" },
+    "break-and-steal-an-egg":       { "playing": "113K", "visits": "243.9M" },
+    "huss-valley":                  { "playing": "", "visits": "" },
+    "destroy-a-vault":              { "playing": "", "visits": "" },
+    "bunsikjip-restaurant":         { "playing": "", "visits": "" },
+    "san-diego-roleplay":           { "playing": "", "visits": "" },
+    "build-a-base-and-steal":       { "playing": "", "visits": "" },
+    "parkour-or-die":               { "playing": "", "visits": "" },
+    "soccer-zero":                  { "playing": "", "visits": "" },
+    "knife-vs-gun-duels":           { "playing": "", "visits": "" },
+    "larp-your-character":          { "playing": "", "visits": "" }
+  }
+}

@@ -9,19 +9,21 @@
     if(n>=1e3)return (n/1e3).toFixed(n>=1e5?0:1).replace(/\.0$/,'')+'K';
     return String(Math.round(n));
   }
-  function ago(iso){var m=Math.max(1,Math.round((Date.now()-new Date(iso))/6e4));
-    return m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'}
+  function num(v){if(typeof v==='number')return v;if(!v)return NaN;
+    var m=String(v).replace(/,/g,'').trim().match(/^([\d.]+)\s*([kmb])?$/i);if(!m)return NaN;
+    return parseFloat(m[1])*({k:1e3,m:1e6,b:1e9}[(m[2]||'').toLowerCase()]||1)}
+  function fmtDate(d){var t=new Date(d);return isNaN(t)?'':t.toLocaleDateString('en',{month:'short',day:'numeric',year:'numeric'})}
 
   fetch('data/stats.json',{cache:'no-cache'}).then(function(r){return r.ok?r.json():null}).catch(function(){return null})
-  .then(function(stats){ render(stats&&stats.updated?stats:null) });
+  .then(function(stats){ render(stats) });
 
   function render(stats){
-    var S=stats?stats.games:{};
-    games.sort(function(a,b){var x=S[a.placeId],y=S[b.placeId];
-      if(x&&y)return y.visits-x.visits; if(x)return -1; if(y)return 1; return 0});
+    var S={};games.forEach(function(g){var r=stats&&stats.games&&stats.games[g.slug]||{};S[g.slug]={playing:num(r.playing),visits:num(r.visits)}});
+    var all=games.every(function(g){return !isNaN(S[g.slug].visits)});
+    if(all)games.sort(function(a,b){return S[b.slug].visits-S[a.slug].visits});
     document.getElementById('fact-count').textContent=games.length;
     games.forEach(function(g,i){
-      var s=S[g.placeId];
+      var s=S[g.slug];
       var li=document.createElement('li'); li.className='reveal'; li.style.setProperty('--i',i%4); li.dataset.role=g.role;
       var a=document.createElement('a'); a.className='card';
       a.href='https://www.roblox.com/games/'+encodeURIComponent(g.placeId);
@@ -30,26 +32,22 @@
       a.addEventListener('pointermove',function(e){var b=a.getBoundingClientRect();a.style.setProperty('--mx',(e.clientX-b.left)+'px');a.style.setProperty('--my',(e.clientY-b.top)+'px')});
 
       var media=el('div','card__media');
-      var back=el('div','card__backdrop'); media.appendChild(back);
-      var icon=el('div','card__icon'); var fb=el('span','card__letter'); fb.textContent=g.title.replace(/[^A-Za-z0-9]/g,'').charAt(0).toUpperCase(); icon.appendChild(fb);
-      media.appendChild(icon);
-      load('assets/thumbs/'+g.slug+'.png',function(img){img.className='card__thumb';media.insertBefore(img,icon)});
-      load('assets/icons/'+g.slug+'.png',function(img){icon.appendChild(img);fb.remove();
-        back.style.backgroundImage='url("assets/icons/'+g.slug+'.png")'});
+      var fb=el('span','card__letter'); fb.textContent=g.title.replace(/[^A-Za-z0-9]/g,'').charAt(0).toUpperCase(); media.appendChild(fb);
+      if(g.thumb){var im=new Image();im.alt='';im.className='card__thumb';im.decoding='async';im.referrerPolicy='no-referrer';
+        im.onload=function(){media.insertBefore(im,fb.nextSibling);requestAnimationFrame(function(){im.classList.add('in')})};im.src=g.thumb}
 
       var body=el('div','card__body');
       var t=el('h3','card__title'); t.textContent=g.title;
       var r=el('p','card__role'); r.textContent=g.role;
       body.appendChild(t); body.appendChild(r);
       var foot=el('div','card__stats');
-      if(s){
-        foot.appendChild(stat('live','playing',s.playing,'playing'));
-        foot.appendChild(stat('','visits',s.visits,'visits'));
-      } else { foot.classList.add('is-empty') }
+      if(!isNaN(s.playing))foot.appendChild(stat('live','playing',s.playing,'playing'));
+      if(!isNaN(s.visits))foot.appendChild(stat('','visits',s.visits,'visits'));
+      if(!foot.children.length){foot.classList.add('is-empty');foot.appendChild(stat('','visits',0,'visits'))}
       a.appendChild(media); a.appendChild(body); a.appendChild(foot); li.appendChild(a); grid.appendChild(li);
     });
     var note=document.getElementById('stats-note');
-    if(stats){note.textContent='Player counts and visits come from Roblox and refresh every few hours (last updated '+ago(stats.updated)+').'}
+    if(stats&&stats.updated&&fmtDate(stats.updated)){note.textContent='Player counts and visit totals are from Roblox, last updated '+fmtDate(stats.updated)+'.'}
     initReveal(); initFilters();
   }
   function el(t,c){var e=document.createElement(t);e.className=c;return e}
